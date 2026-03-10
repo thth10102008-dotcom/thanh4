@@ -1,0 +1,360 @@
+const express = require("express")
+const http = require("http")
+const { Server } = require("socket.io")
+
+const app = express()
+const server = http.createServer(app)
+const io = new Server(server)
+
+app.use(express.json())
+
+let online = 0
+let token = ""
+let attendance = []
+
+const admin = {
+user:"admin",
+pass:"123456"
+}
+
+io.on("connection",(socket)=>{
+online++
+io.emit("online",online)
+
+socket.on("disconnect",()=>{
+online--
+io.emit("online",online)
+})
+})
+
+app.get("/",(req,res)=>{
+res.send(`
+<html>
+<head>
+<title>Admin Login</title>
+
+<style>
+body{
+font-family:Arial;
+background:#0f172a;
+color:white;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+}
+
+.box{
+background:#1e293b;
+padding:40px;
+border-radius:10px;
+text-align:center;
+}
+
+input{
+padding:10px;
+margin:10px;
+width:200px;
+border:none;
+border-radius:5px;
+}
+
+button{
+padding:10px 20px;
+background:#3b82f6;
+border:none;
+color:white;
+border-radius:5px;
+cursor:pointer;
+}
+
+button:hover{
+background:#2563eb;
+}
+</style>
+
+</head>
+
+<body>
+
+<div class="box">
+
+<h2>Admin Login</h2>
+
+<input id="user" placeholder="username"><br>
+<input id="pass" type="password" placeholder="password"><br>
+
+<button onclick="login()">Login</button>
+
+</div>
+
+<script>
+
+function login(){
+
+fetch("/login",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+user:document.getElementById("user").value,
+pass:document.getElementById("pass").value
+})
+})
+.then(r=>r.json())
+.then(d=>{
+if(d.success){
+window.location="/admin"
+}else{
+alert("Sai tài khoản")
+}
+})
+
+}
+
+</script>
+
+</body>
+</html>
+`)
+})
+
+app.get("/admin",(req,res)=>{
+res.send(`
+
+<html>
+
+<head>
+
+<style>
+
+body{
+font-family:Arial;
+background:#111827;
+color:white;
+text-align:center;
+padding:40px;
+}
+
+button{
+padding:10px 20px;
+margin:10px;
+background:#22c55e;
+border:none;
+color:white;
+border-radius:5px;
+cursor:pointer;
+}
+
+button:hover{
+background:#16a34a;
+}
+
+ul{
+list-style:none;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<h1>Admin Panel</h1>
+
+<button onclick="create()">Tạo link điểm danh</button>
+
+<p id="link"></p>
+
+<button onclick="load()">Xem danh sách</button>
+
+<ul id="list"></ul>
+
+<script>
+
+function create(){
+
+fetch("/create")
+.then(r=>r.json())
+.then(d=>{
+document.getElementById("link").innerText=
+location.origin+"/attendance?token="+d.token
+})
+
+}
+
+function load(){
+
+fetch("/list")
+.then(r=>r.json())
+.then(data=>{
+
+let html=""
+
+data.forEach(i=>{
+html+=\`<li>\${i.name} - \${i.id}</li>\`
+})
+
+document.getElementById("list").innerHTML=html
+
+})
+
+}
+
+</script>
+
+</body>
+
+</html>
+
+`)
+})
+
+app.get("/attendance",(req,res)=>{
+
+const t = req.query.token
+
+res.send(`
+
+<html>
+
+<head>
+
+<style>
+
+body{
+font-family:Arial;
+background:#020617;
+color:white;
+display:flex;
+justify-content:center;
+align-items:center;
+height:100vh;
+}
+
+.box{
+background:#1e293b;
+padding:40px;
+border-radius:10px;
+text-align:center;
+}
+
+input{
+padding:10px;
+margin:10px;
+width:200px;
+border:none;
+border-radius:5px;
+}
+
+button{
+padding:10px 20px;
+background:#06b6d4;
+border:none;
+color:white;
+border-radius:5px;
+cursor:pointer;
+}
+
+</style>
+
+</head>
+
+<body>
+
+<div class="box">
+
+<h2>Điểm danh</h2>
+
+<p>👀 Online: <span id="online">0</span></p>
+
+<input id="name" placeholder="Tên"><br>
+<input id="id" placeholder="Mã sinh viên"><br>
+
+<button onclick="send()">Điểm danh</button>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+
+const socket = io()
+
+socket.on("online",(n)=>{
+document.getElementById("online").innerText=n
+})
+
+function send(){
+
+fetch("/submit",{
+method:"POST",
+headers:{
+"Content-Type":"application/json"
+},
+body:JSON.stringify({
+name:document.getElementById("name").value,
+id:document.getElementById("id").value,
+token:"${t}"
+})
+})
+.then(r=>r.json())
+.then(d=>{
+alert(d.msg)
+})
+
+}
+
+</script>
+
+</body>
+
+</html>
+
+`)
+})
+
+app.post("/login",(req,res)=>{
+
+if(req.body.user===admin.user && req.body.pass===admin.pass){
+res.json({success:true})
+}else{
+res.json({success:false})
+}
+
+})
+
+app.get("/create",(req,res)=>{
+
+token=Math.random().toString(36).substring(2,8)
+
+res.json({token})
+
+})
+
+app.post("/submit",(req,res)=>{
+
+if(req.body.token!==token){
+return res.json({msg:"Link sai"})
+}
+
+if(attendance.find(i=>i.id===req.body.id)){
+return res.json({msg:"Bạn đã điểm danh"})
+}
+
+attendance.push({
+name:req.body.name,
+id:req.body.id
+})
+
+res.json({msg:"Điểm danh thành công"})
+})
+
+app.get("/list",(req,res)=>{
+res.json(attendance)
+})
+
+server.listen(3000,()=>{
+console.log("Server chạy http://localhost:3000")
+})
